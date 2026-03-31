@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "yandex-wiki-mcp"
+name = "yandex-wiki-mcp-server"
 version = "0.1.0"
 description = "MCP server for Yandex Wiki"
 readme = "README.md"
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-yandex-wiki-mcp = "yandex_wiki_mcp.__main__:main"
+yandex-wiki-mcp-server = "yandex_wiki_mcp.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/yandex_wiki_mcp"]

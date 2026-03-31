@@ -26,7 +26,7 @@ MCP server для работы с [Яндекс Wiki](https://wiki.yandex.ru) ч
   "mcpServers": {
     "yandex-wiki": {
       "command": "uvx",
-      "args": ["--python", "3.12", "yandex-wiki-mcp@latest"],
+      "args": ["--python", "3.12", "yandex-wiki-mcp-server@latest"],
       "env": {
         "WIKI_IAM_TOKEN": "your-iam-token",
         "WIKI_CLOUD_ORG_ID": "your-cloud-org-id"
@@ -43,7 +43,7 @@ MCP server для работы с [Яндекс Wiki](https://wiki.yandex.ru) ч
   "mcpServers": {
     "yandex-wiki": {
       "command": "uvx",
-      "args": ["--python", "3.12", "yandex-wiki-mcp@latest"],
+      "args": ["--python", "3.12", "yandex-wiki-mcp-server@latest"],
       "env": {
         "TRACKER_IAM_TOKEN": "your-iam-token",
         "TRACKER_CLOUD_ORG_ID": "your-cloud-org-id"
@@ -76,7 +76,7 @@ IAM-токен действует до 12 часов. Для автообнов�
 
 ```bash
 claude mcp add yandex-wiki --scope user \
-  -- uvx --python 3.12 yandex-wiki-mcp@latest
+  -- uvx --python 3.12 yandex-wiki-mcp-server@latest
 ```
 
 Затем добавьте env-переменные в `~/.claude.json` в секцию `mcpServers.yandex-wiki.env`.
