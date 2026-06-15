@@ -9,6 +9,13 @@ BASE_URL = "https://api.wiki.yandex.net/v1"
 
 
 def _get_headers() -> dict[str, str]:
+    # Патч: поддержка OAuth-токена Яндекс ID (живёт ~год), а не только IAM.
+    # WIKI_OAUTH_TOKEN / TRACKER_OAUTH_TOKEN → схема "OAuth".
+    # WIKI_IAM_TOKEN   / TRACKER_IAM_TOKEN   → схема "Bearer" (оригинальное поведение).
+    oauth_token = (
+        os.environ.get("WIKI_OAUTH_TOKEN")
+        or os.environ.get("TRACKER_OAUTH_TOKEN")
+    )
     iam_token = (
         os.environ.get("WIKI_IAM_TOKEN")
         or os.environ.get("TRACKER_IAM_TOKEN")
@@ -17,11 +24,14 @@ def _get_headers() -> dict[str, str]:
         os.environ.get("WIKI_CLOUD_ORG_ID")
         or os.environ.get("TRACKER_CLOUD_ORG_ID")
     )
-    if not iam_token:
+    if oauth_token:
+        headers = {"Authorization": f"OAuth {oauth_token}"}
+    elif iam_token:
+        headers = {"Authorization": f"Bearer {iam_token}"}
+    else:
         raise RuntimeError(
-            "Set WIKI_IAM_TOKEN (or TRACKER_IAM_TOKEN) environment variable"
+            "Set WIKI_OAUTH_TOKEN or WIKI_IAM_TOKEN (or TRACKER_* equivalents)"
         )
-    headers = {"Authorization": f"Bearer {iam_token}"}
     if org_id:
         headers["X-Cloud-Org-Id"] = org_id
     return headers

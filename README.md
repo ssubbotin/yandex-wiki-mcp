@@ -65,14 +65,38 @@ yc iam create-token
 
 IAM-токен действует до 12 часов. Для автообновления используйте [yt-refresh](https://github.com/MoshkaBortmanStar/yandex-wiki-mcp) скилл в Claude Code.
 
-**Обязательные переменные окружения:**
+### OAuth-токен (рекомендуется)
+
+Этот форк дополнительно принимает **OAuth-токен Яндекс ID** (`y0__…`, живёт ~год) —
+не требует обновления каждые 12 часов и совпадает с токеном Яндекс Трекера. Если
+переменная OAuth задана, она имеет приоритет над IAM:
+
+```bash
+export WIKI_OAUTH_TOKEN=<y0__-токен>          # или TRACKER_OAUTH_TOKEN
+export WIKI_CLOUD_ORG_ID=<id организации>      # или TRACKER_CLOUD_ORG_ID
+```
+
+**Переменные окружения:**
 
 | Переменная | Описание |
 |---|---|
-| `WIKI_IAM_TOKEN` или `TRACKER_IAM_TOKEN` | IAM-токен Яндекс Cloud |
+| `WIKI_OAUTH_TOKEN` или `TRACKER_OAUTH_TOKEN` | OAuth-токен Яндекс ID (схема `OAuth`, приоритетный) |
+| `WIKI_IAM_TOKEN` или `TRACKER_IAM_TOKEN` | IAM-токен Яндекс Cloud (схема `Bearer`, запасной) |
 | `WIKI_CLOUD_ORG_ID` или `TRACKER_CLOUD_ORG_ID` | ID организации Yandex Cloud (`X-Cloud-Org-Id`) |
 
 ## Добавление в Claude Code
+
+OAuth-поддержка есть только в этом форке (на PyPI её нет), поэтому ставим прямо из git:
+
+```bash
+claude mcp add yandex-wiki --scope user \
+  -- uvx --from git+https://github.com/ssubbotin/yandex-wiki-mcp@oauth yandex-wiki-mcp-server
+```
+
+Затем добавьте OAuth-токен и Cloud Org ID в `~/.claude.json`
+(`mcpServers.yandex-wiki.env`) — см. раздел «Аутентификация».
+
+Вариант с PyPI (только IAM-токен, без OAuth):
 
 ```bash
 claude mcp add yandex-wiki --scope user \
