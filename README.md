@@ -65,12 +65,27 @@ yc iam create-token
 
 IAM-токен действует до 12 часов. Для автообновления используйте [yt-refresh](https://github.com/MoshkaBortmanStar/yandex-wiki-mcp) скилл в Claude Code.
 
-**Обязательные переменные окружения:**
+### OAuth-токен Яндекс ID
+
+Вместо IAM-токена можно задать OAuth-токен Яндекс ID (`y0__…`). Он действует
+около года, поэтому не требует обновления каждые 12 часов, и совпадает с
+токеном, который используется для Яндекс Трекера. Если переменная OAuth задана,
+она имеет приоритет над IAM:
+
+```bash
+export WIKI_OAUTH_TOKEN=<y0__-токен>       # или TRACKER_OAUTH_TOKEN
+export WIKI_CLOUD_ORG_ID=<id организации>  # или TRACKER_CLOUD_ORG_ID
+```
+
+**Переменные окружения:**
 
 | Переменная | Описание |
 |---|---|
-| `WIKI_IAM_TOKEN` или `TRACKER_IAM_TOKEN` | IAM-токен Яндекс Cloud |
+| `WIKI_OAUTH_TOKEN` или `TRACKER_OAUTH_TOKEN` | OAuth-токен Яндекс ID (схема `OAuth`, приоритетный) |
+| `WIKI_IAM_TOKEN` или `TRACKER_IAM_TOKEN` | IAM-токен Яндекс Cloud (схема `Bearer`, запасной) |
 | `WIKI_CLOUD_ORG_ID` или `TRACKER_CLOUD_ORG_ID` | ID организации Yandex Cloud (`X-Cloud-Org-Id`) |
+
+Нужен один из двух токенов. Если не задан ни один, сервер завершается с понятной ошибкой.
 
 ## Добавление в Claude Code
 
