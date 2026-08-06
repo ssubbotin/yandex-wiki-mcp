@@ -125,5 +125,26 @@ class GridTests(unittest.TestCase):
         self.assertEqual(json.loads(requests[1].content), {"rows": [{"name": "Новая"}], "after_row_id": "3"})
 
 
+class AuthHeaderTests(unittest.TestCase):
+    def test_oauth_token_has_priority_over_iam(self) -> None:
+        env = {"WIKI_OAUTH_TOKEN": "y0_oauth", "WIKI_IAM_TOKEN": "t1.iam", "WIKI_CLOUD_ORG_ID": "org"}
+        with patch.dict(client.os.environ, env, clear=True):
+            self.assertEqual(
+                client._get_headers(),
+                {"Authorization": "OAuth y0_oauth", "X-Cloud-Org-Id": "org"},
+            )
+
+    def test_tracker_oauth_fallback_and_iam_default(self) -> None:
+        with patch.dict(client.os.environ, {"TRACKER_OAUTH_TOKEN": "y0_tr"}, clear=True):
+            self.assertEqual(client._get_headers(), {"Authorization": "OAuth y0_tr"})
+        with patch.dict(client.os.environ, {"WIKI_IAM_TOKEN": "t1.iam"}, clear=True):
+            self.assertEqual(client._get_headers(), {"Authorization": "Bearer t1.iam"})
+
+    def test_missing_tokens_raise(self) -> None:
+        with patch.dict(client.os.environ, {}, clear=True):
+            with self.assertRaises(RuntimeError):
+                client._get_headers()
+
+
 if __name__ == "__main__":
     unittest.main()
