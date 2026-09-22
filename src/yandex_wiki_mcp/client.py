@@ -88,7 +88,10 @@ def update_page(page_id: str, title: str | None, content: str | None) -> dict[st
 def append_to_page(page_id: str, content: str) -> dict[str, Any]:
     """Append content to existing page. POST /v1/pages/{id}/append-content"""
     with _client() as c:
-        r = c.post(f"/pages/{page_id}/append-content", json={"content": content})
+        r = c.post(
+            f"/pages/{page_id}/append-content",
+            json={"content": content, "body": {"location": "bottom"}},
+        )
         r.raise_for_status()
         return r.json()
 
