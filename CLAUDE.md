@@ -11,14 +11,14 @@ An MCP (stdio) server exposing the Yandex Wiki REST API (`https://api.wiki.yande
 ```bash
 uv venv && uv pip install -e .          # local install
 
-export WIKI_IAM_TOKEN=$(yc iam create-token)
+export WIKI_OAUTH_TOKEN=<y0__-токен>        # или IAM: export WIKI_IAM_TOKEN=$(yc iam create-token)
 export WIKI_CLOUD_ORG_ID=<org-id>
 python -m yandex_wiki_mcp               # run the server on stdio
 ```
 
 There is no test suite, linter config, or CI in the repo. Version lives only in `pyproject.toml`; a release is a version bump plus `uv build && uv publish`.
 
-Auth env vars are read at request time (not at startup), so a stale IAM token can be replaced without restarting nothing else — but the running process caches nothing, so it picks up only what was in its own environment. `WIKI_*` wins over the `TRACKER_*` fallback names.
+Auth env vars are read at request time (not at startup), so a stale IAM token can be replaced without restarting nothing else — but the running process caches nothing, so it picks up only what was in its own environment. `WIKI_*` wins over the `TRACKER_*` fallback names; an OAuth token (scheme `OAuth`, lives about a year) wins over an IAM token (scheme `Bearer`, 12 hours).
 
 ## Architecture
 
