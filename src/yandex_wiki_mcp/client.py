@@ -1,5 +1,6 @@
 """Yandex Wiki API client."""
 
+import json
 import os
 import re
 import httpx
@@ -14,9 +15,11 @@ def _get_headers() -> dict[str, str]:
     # WIKI_OAUTH_TOKEN / TRACKER_OAUTH_TOKEN → схема "OAuth" (токен Яндекс ID, живёт около года).
     # WIKI_IAM_TOKEN   / TRACKER_IAM_TOKEN   → схема "Bearer" (IAM-токен Яндекс Cloud, до 12 часов).
     # OAuth имеет приоритет, если задан.
+    # TRACKER_TOKEN: имя, под которым OAuth-токен хранит сервер yandex-tracker-mcp.
     oauth_token = (
         os.environ.get("WIKI_OAUTH_TOKEN")
         or os.environ.get("TRACKER_OAUTH_TOKEN")
+        or os.environ.get("TRACKER_TOKEN")
     )
     iam_token = (
         os.environ.get("WIKI_IAM_TOKEN")
@@ -32,11 +35,35 @@ def _get_headers() -> dict[str, str]:
         headers = {"Authorization": f"Bearer {iam_token}"}
     else:
         raise RuntimeError(
-            "Set WIKI_OAUTH_TOKEN or WIKI_IAM_TOKEN (or TRACKER_* equivalents)"
+            "Set WIKI_OAUTH_TOKEN (or TRACKER_OAUTH_TOKEN / TRACKER_TOKEN) "
+            "or WIKI_IAM_TOKEN (or TRACKER_IAM_TOKEN)"
         )
     if org_id:
         headers["X-Cloud-Org-Id"] = org_id
     return headers
+
+
+class WikiApiError(RuntimeError):
+    """Ошибка API Вики с пояснением из тела ответа."""
+
+
+def _check(r: httpx.Response) -> None:
+    """Как raise_for_status, но с error_code и пояснением API в тексте ошибки."""
+    if r.is_success:
+        return
+    detail = ""
+    try:
+        body = r.json()
+    except ValueError:
+        body = r.text[:500]
+    if isinstance(body, dict):
+        parts = [str(body.get(k)) for k in ("error_code", "debug_message", "message") if body.get(k)]
+        if body.get("details"):
+            parts.append(json.dumps(body["details"], ensure_ascii=False)[:500])
+        detail = "; ".join(parts)
+    elif body:
+        detail = str(body)
+    raise WikiApiError(f"{r.status_code} {r.request.method} {r.request.url.path}: {detail or r.reason_phrase}")
 
 
 def _client() -> httpx.Client:
@@ -52,7 +79,7 @@ def _get_with_slug(path: str, slug: str, **extra_params: Any) -> dict[str, Any]:
     url = f"{BASE_URL}{path}?{qs}"
     with _client() as c:
         r = c.get(url)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -69,14 +96,21 @@ def get_page(slug: str, include_content: bool = True, expand_grids: bool = True)
     return data
 
 
-def get_page_by_id(page_id: str, include_content: bool = True, expand_grids: bool = True) -> dict[str, Any]:
-    """Get page details by numeric ID."""
+def get_page_by_id(
+    page_id: str,
+    include_content: bool = True,
+    expand_grids: bool = True,
+    revision_id: int | None = None,
+) -> dict[str, Any]:
+    """Get page details by numeric ID, optionally at an older revision."""
     params: dict[str, Any] = {}
     if include_content:
         params["fields"] = "content,breadcrumbs,attributes"
+    if revision_id is not None:
+        params["revision_id"] = revision_id
     with _client() as c:
         r = c.get(f"/pages/{page_id}", params=params)
-        r.raise_for_status()
+        _check(r)
         data = r.json()
     if not include_content:
         return data
@@ -127,7 +161,7 @@ def get_grid(
     }.items() if v is not None}
     with _client() as c:
         r = c.get(f"/grids/{grid_id}", params=params)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -173,7 +207,7 @@ def update_grid_cells(grid_id: str, cells: list[dict[str, Any]], revision: str |
         body["revision"] = revision
     with _client() as c:
         r = c.post(f"/grids/{grid_id}/cells", json=body)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -194,7 +228,7 @@ def add_grid_rows(
             body[k] = v
     with _client() as c:
         r = c.post(f"/grids/{grid_id}/rows", json=body)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -202,7 +236,7 @@ def create_page(slug: str, title: str, content: str) -> dict[str, Any]:
     """Create a new page. POST /v1/pages"""
     with _client() as c:
         r = c.post("/pages", json={"slug": slug, "title": title, "content": content})
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -215,7 +249,7 @@ def update_page(page_id: str, title: str | None, content: str | None) -> dict[st
         body["content"] = content
     with _client() as c:
         r = c.post(f"/pages/{page_id}", json=body)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -226,7 +260,7 @@ def append_to_page(page_id: str, content: str) -> dict[str, Any]:
             f"/pages/{page_id}/append-content",
             json={"content": content, "body": {"location": "bottom"}},
         )
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -234,7 +268,7 @@ def delete_page(page_id: str) -> dict[str, Any]:
     """Delete page by ID. DELETE /v1/pages/{id}"""
     with _client() as c:
         r = c.delete(f"/pages/{page_id}")
-        r.raise_for_status()
+        _check(r)
         return {"deleted": True, "page_id": page_id}
 
 
@@ -253,7 +287,7 @@ def get_descendants_by_id(page_id: str, page_size: int = 50, cursor: str | None 
         params["cursor"] = cursor
     with _client() as c:
         r = c.get(f"/pages/{page_id}/descendants", params=params)
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -261,7 +295,7 @@ def get_comments(page_id: str) -> dict[str, Any]:
     """Get comments for a page. GET /v1/pages/{id}/comments"""
     with _client() as c:
         r = c.get(f"/pages/{page_id}/comments")
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -269,7 +303,7 @@ def add_comment(page_id: str, text: str) -> dict[str, Any]:
     """Add a comment to a page. POST /v1/pages/{id}/comments"""
     with _client() as c:
         r = c.post(f"/pages/{page_id}/comments", json={"text": text})
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -277,7 +311,7 @@ def get_page_attachments(page_id: str) -> dict[str, Any]:
     """Get attachments for a page. GET /v1/pages/{id}/attachments"""
     with _client() as c:
         r = c.get(f"/pages/{page_id}/attachments")
-        r.raise_for_status()
+        _check(r)
         return r.json()
 
 
@@ -285,5 +319,33 @@ def get_current_user() -> dict[str, Any]:
     """Get current authenticated user info. GET /v1/users/me"""
     with _client() as c:
         r = c.get("/users/me")
-        r.raise_for_status()
+        _check(r)
+        return r.json()
+
+
+def search(
+    query: str,
+    limit: int = 10,
+    cursor: int = 1,
+    doc_type: str | None = None,
+    highlight: bool = False,
+) -> dict[str, Any]:
+    """Full-text search over pages and files. POST /v1/search"""
+    body: dict[str, Any] = {"query": query, "limit": limit, "cursor": cursor, "highlight": highlight}
+    if doc_type:
+        body["filters"] = {"type": doc_type}
+    with _client() as c:
+        r = c.post("/search", json=body)
+        _check(r)
+        return r.json()
+
+
+def get_revisions(page_id: str, page_size: int = 20, cursor: str | None = None) -> dict[str, Any]:
+    """Page revision history (newest first). GET /v1/pages/{id}/revisions"""
+    params: dict[str, Any] = {"page_size": page_size}
+    if cursor:
+        params["cursor"] = cursor
+    with _client() as c:
+        r = c.get(f"/pages/{page_id}/revisions", params=params)
+        _check(r)
         return r.json()

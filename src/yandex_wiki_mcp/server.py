@@ -59,6 +59,10 @@ async def list_tools() -> list[Tool]:
                         "description": "Expand dynamic tables into Markdown (default true)",
                         "default": True,
                     },
+                    "revision_id": {
+                        "type": "integer",
+                        "description": "Read the page as of this revision (ids from wiki_get_revisions)",
+                    },
                 },
                 "required": ["page_id"],
             },
@@ -202,6 +206,40 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="wiki_search",
+            description=(
+                "Full-text search over Yandex Wiki. Returns slug, title, url, a content snippet "
+                "and modified_at per hit; paginate with cursor (page number, 1..500)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "limit": {"type": "integer", "description": "Results per page, 1..50 (default 10)", "default": 10},
+                    "cursor": {"type": "integer", "description": "Result page number (default 1)", "default": 1},
+                    "type": {"type": "string", "enum": ["page", "file"], "description": "Only pages or only files"},
+                    "highlight": {"type": "boolean", "description": "Wrap matches in <em>", "default": False},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="wiki_get_revisions",
+            description=(
+                "Revision history of a page by numeric ID: revision id, author, created_at, newest first. "
+                "Pass a revision id to wiki_get_page_by_id to read that version."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page_id": {"type": "string", "description": "Numeric page ID"},
+                    "page_size": {"type": "integer", "description": "Revisions per page (default 20)", "default": 20},
+                    "cursor": {"type": "string", "description": "Pagination cursor from previous response"},
+                },
+                "required": ["page_id"],
+            },
+        ),
+        Tool(
             name="wiki_get_grid",
             description=(
                 "Get a dynamic table (grid) by UUID, the id from {% wgrid id=\"UUID\" %} on a page. "
@@ -300,6 +338,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     arguments["page_id"],
                     arguments.get("include_content", True),
                     arguments.get("expand_grids", True),
+                    arguments.get("revision_id"),
                 ))
             case "wiki_get_descendants":
                 return _ok(client.get_descendants(
@@ -338,6 +377,20 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 return _ok(client.add_comment(arguments["page_id"], arguments["text"]))
             case "wiki_get_attachments":
                 return _ok(client.get_page_attachments(arguments["page_id"]))
+            case "wiki_search":
+                return _ok(client.search(
+                    arguments["query"],
+                    arguments.get("limit", 10),
+                    arguments.get("cursor", 1),
+                    arguments.get("type"),
+                    arguments.get("highlight", False),
+                ))
+            case "wiki_get_revisions":
+                return _ok(client.get_revisions(
+                    arguments["page_id"],
+                    arguments.get("page_size", 20),
+                    arguments.get("cursor"),
+                ))
             case "wiki_get_grid":
                 grid = client.get_grid(
                     arguments["grid_id"],
