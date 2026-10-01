@@ -17,7 +17,8 @@ async def list_tools() -> list[Tool]:
             name="wiki_get_page",
             description=(
                 "Get Yandex Wiki page by slug (path from URL). "
-                "Returns title, id, content and breadcrumbs. "
+                "Returns title, id, content and breadcrumbs. Dynamic tables "
+                "({% wgrid id=\"UUID\" %}) are expanded into Markdown tables below the marker. "
                 "Example slug: 'scp/arxitektura-i-infrastruktura/adr/my-adr'"
             ),
             inputSchema={
@@ -29,13 +30,21 @@ async def list_tools() -> list[Tool]:
                         "description": "Include page content (default true)",
                         "default": True,
                     },
+                    "expand_grids": {
+                        "type": "boolean",
+                        "description": "Expand dynamic tables into Markdown (default true)",
+                        "default": True,
+                    },
                 },
                 "required": ["slug"],
             },
         ),
         Tool(
             name="wiki_get_page_by_id",
-            description="Get Yandex Wiki page by numeric ID. Returns title, slug, content, breadcrumbs and attributes.",
+            description=(
+                "Get Yandex Wiki page by numeric ID. Returns title, slug, content, breadcrumbs "
+                "and attributes. Dynamic tables are expanded into Markdown like in wiki_get_page."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -43,6 +52,11 @@ async def list_tools() -> list[Tool]:
                     "include_content": {
                         "type": "boolean",
                         "description": "Include page content (default true)",
+                        "default": True,
+                    },
+                    "expand_grids": {
+                        "type": "boolean",
+                        "description": "Expand dynamic tables into Markdown (default true)",
                         "default": True,
                     },
                 },
@@ -188,6 +202,74 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="wiki_get_grid",
+            description=(
+                "Get a dynamic table (grid) by UUID, the id from {% wgrid id=\"UUID\" %} on a page. "
+                "Returns a Markdown table with a row_id column (format=markdown, default) "
+                "or the raw API response with column slugs (format=json)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "grid_id": {"type": "string", "description": "Grid UUID"},
+                    "format": {
+                        "type": "string",
+                        "enum": ["markdown", "json"],
+                        "default": "markdown",
+                    },
+                    "only_cols": {"type": "string", "description": "Column slugs, comma-separated"},
+                    "only_rows": {"type": "string", "description": "Row ids, comma-separated"},
+                    "filter": {"type": "string", "description": "Row filter, e.g. '[slug] ~ wiki AND [slug2]<32'"},
+                    "sort": {"type": "string", "description": "Sort by columns, e.g. 'slug, -slug2'"},
+                    "revision": {"type": "integer", "description": "Load an older grid revision"},
+                },
+                "required": ["grid_id"],
+            },
+        ),
+        Tool(
+            name="wiki_update_grid_cells",
+            description=(
+                "Update cells of a dynamic table. Column slugs come from wiki_get_grid with format=json; "
+                "values are Wiki markup strings (links [text](url) work), numbers, booleans or lists."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "grid_id": {"type": "string", "description": "Grid UUID"},
+                    "cells": {
+                        "type": "array",
+                        "description": "Cells to update",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "row_id": {"type": "integer"},
+                                "column_slug": {"type": "string"},
+                                "value": {},
+                            },
+                            "required": ["row_id", "column_slug", "value"],
+                        },
+                    },
+                    "revision": {"type": "string", "description": "Expected grid revision (optimistic lock)"},
+                },
+                "required": ["grid_id", "cells"],
+            },
+        ),
+        Tool(
+            name="wiki_add_grid_rows",
+            description="Add rows to a dynamic table. Each row is an object {column_slug: value}.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "grid_id": {"type": "string", "description": "Grid UUID"},
+                    "rows": {"type": "array", "items": {"type": "object"}},
+                    "after_row_id": {"type": "string", "description": "Insert after this row id"},
+                    "position": {"type": "integer", "description": "Insert at this position"},
+                    "revision": {"type": "string", "description": "Expected grid revision (optimistic lock)"},
+                },
+                "required": ["grid_id", "rows"],
+            },
+        ),
+        Tool(
             name="wiki_get_current_user",
             description="Get info about the currently authenticated Yandex Wiki user",
             inputSchema={"type": "object", "properties": {}},
@@ -211,11 +293,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 return _ok(client.get_page(
                     arguments["slug"],
                     arguments.get("include_content", True),
+                    arguments.get("expand_grids", True),
                 ))
             case "wiki_get_page_by_id":
                 return _ok(client.get_page_by_id(
                     arguments["page_id"],
                     arguments.get("include_content", True),
+                    arguments.get("expand_grids", True),
                 ))
             case "wiki_get_descendants":
                 return _ok(client.get_descendants(
@@ -254,6 +338,33 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 return _ok(client.add_comment(arguments["page_id"], arguments["text"]))
             case "wiki_get_attachments":
                 return _ok(client.get_page_attachments(arguments["page_id"]))
+            case "wiki_get_grid":
+                grid = client.get_grid(
+                    arguments["grid_id"],
+                    arguments.get("only_cols"),
+                    arguments.get("only_rows"),
+                    arguments.get("filter"),
+                    arguments.get("sort"),
+                    arguments.get("revision"),
+                )
+                if arguments.get("format", "markdown") == "json":
+                    return _ok(grid)
+                head = f"# {grid.get('title', '')} (revision {grid.get('revision')})\n\n"
+                return [TextContent(type="text", text=head + client.grid_to_markdown(grid))]
+            case "wiki_update_grid_cells":
+                return _ok(client.update_grid_cells(
+                    arguments["grid_id"],
+                    arguments["cells"],
+                    arguments.get("revision"),
+                ))
+            case "wiki_add_grid_rows":
+                return _ok(client.add_grid_rows(
+                    arguments["grid_id"],
+                    arguments["rows"],
+                    arguments.get("after_row_id"),
+                    arguments.get("position"),
+                    arguments.get("revision"),
+                ))
             case "wiki_get_current_user":
                 return _ok(client.get_current_user())
             case _:

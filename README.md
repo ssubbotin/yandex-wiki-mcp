@@ -6,7 +6,7 @@ MCP server для работы с [Яндекс Wiki](https://wiki.yandex.ru) ч
 
 | Инструмент | Описание |
 |---|---|
-| `wiki_get_page` | Получить страницу по slug (с контентом) |
+| `wiki_get_page` | Получить страницу по slug (с контентом; динамические таблицы раскрываются в Markdown) |
 | `wiki_get_page_by_id` | Получить страницу по числовому ID |
 | `wiki_get_descendants` | Получить дерево подстраниц по slug |
 | `wiki_get_descendants_by_id` | Получить дерево подстраниц по ID |
@@ -17,7 +17,16 @@ MCP server для работы с [Яндекс Wiki](https://wiki.yandex.ru) ч
 | `wiki_get_comments` | Получить комментарии страницы |
 | `wiki_add_comment` | Добавить комментарий |
 | `wiki_get_attachments` | Получить список вложений |
+| `wiki_get_grid` | Получить динамическую таблицу по UUID (Markdown со столбцом `row_id` или JSON) |
+| `wiki_update_grid_cells` | Изменить ячейки динамической таблицы |
+| `wiki_add_grid_rows` | Добавить строки в динамическую таблицу |
 | `wiki_get_current_user` | Информация о текущем пользователе |
+
+Динамические таблицы (`{% wgrid id="UUID" %}`) не входят в текст страницы, поэтому
+`wiki_get_page` и `wiki_get_page_by_id` по умолчанию подставляют под каждый маркер таблицу
+Markdown (`expand_grids=false` отключает). Старые табличные страницы (`page_type=grid`)
+публичный API не отдаёт: на них инструменты возвращают ошибку с подсказкой выгрузить
+таблицу из интерфейса.
 
 ## Установка через uvx
 
