@@ -1,0 +1,32 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: uv run python -m unittest -v
+      - name: Server starts and lists tools
+        env:
+          WIKI_OAUTH_TOKEN: dummy
+        run: |
+          # stdin держится открытым: при раннем конце ввода сервер может
+          # завершиться раньше, чем ответит на tools/list
+          { printf '%s\n' \
+              '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+              '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+              '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+            sleep 5; } \
+            | timeout 60 uv run python -m yandex_wiki_mcp | tee out.jsonl
+          grep -q '"wiki_get_grid"' out.jsonl

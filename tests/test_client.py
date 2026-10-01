@@ -146,5 +146,59 @@ class AuthHeaderTests(unittest.TestCase):
                 client._get_headers()
 
 
+class TrackerTokenFallbackTests(unittest.TestCase):
+    def test_tracker_mcp_token_name_is_accepted(self) -> None:
+        env = {"TRACKER_TOKEN": "y0_tr", "TRACKER_CLOUD_ORG_ID": "org"}
+        with patch.dict(client.os.environ, env, clear=True):
+            self.assertEqual(
+                client._get_headers(),
+                {"Authorization": "OAuth y0_tr", "X-Cloud-Org-Id": "org"},
+            )
+
+
+class ApiErrorTests(unittest.TestCase):
+    def test_error_text_carries_api_explanation(self) -> None:
+        body = {"error_code": "BAD_REQUEST", "debug_message": "Unknown field authors"}
+        with patch.object(client, "_client", side_effect=_mock(lambda r: httpx.Response(400, json=body))):
+            with self.assertRaises(client.WikiApiError) as ctx:
+                client.get_page_by_id("7")
+        self.assertIn("400 GET /v1/pages/7", str(ctx.exception))
+        self.assertIn("BAD_REQUEST; Unknown field authors", str(ctx.exception))
+
+
+class SearchAndRevisionTests(unittest.TestCase):
+    def test_search_body(self) -> None:
+        requests: list[httpx.Request] = []
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json={"results": []})
+
+        with patch.object(client, "_client", side_effect=_mock(handle)):
+            client.search("водность", limit=5, doc_type="page")
+
+        self.assertEqual(requests[0].method, "POST")
+        self.assertEqual(requests[0].url.path, "/v1/search")
+        self.assertEqual(
+            json.loads(requests[0].content),
+            {"query": "водность", "limit": 5, "cursor": 1, "highlight": False, "filters": {"type": "page"}},
+        )
+
+    def test_revisions_and_old_revision_read(self) -> None:
+        requests: list[httpx.Request] = []
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json={"id": 7, "page_type": "page", "content": "x", "results": []})
+
+        with patch.object(client, "_client", side_effect=_mock(handle)):
+            client.get_revisions("7", page_size=2, cursor="abc")
+            client.get_page_by_id("7", revision_id=74682203)
+
+        self.assertEqual(requests[0].url.path, "/v1/pages/7/revisions")
+        self.assertEqual(dict(requests[0].url.params), {"page_size": "2", "cursor": "abc"})
+        self.assertEqual(requests[1].url.params["revision_id"], "74682203")
+
+
 if __name__ == "__main__":
     unittest.main()

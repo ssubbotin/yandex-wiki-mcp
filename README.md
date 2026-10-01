@@ -1,43 +1,89 @@
 # yandex-wiki-mcp
 
-MCP server для работы с [Яндекс Wiki](https://wiki.yandex.ru) через Claude Code и другие MCP-клиенты.
+MCP-сервер для работы с [Яндекс Вики](https://wiki.yandex.ru) из Claude Code и других MCP-клиентов.
+Работает через публичный API Вики (`https://api.wiki.yandex.net/v1`) по stdio.
+
+Это форк [MoshkaBortmanStar/yandex-wiki-mcp](https://github.com/MoshkaBortmanStar/yandex-wiki-mcp).
+Сверх исходного проекта: вход по OAuth-токену Яндекс ID, чтение и запись динамических таблиц,
+поиск, история правок страниц, пояснения API в текстах ошибок. Пакет `yandex-wiki-mcp-server` на PyPI
+принадлежит исходному проекту и этих возможностей не содержит, поэтому форк ставится из git.
 
 ## Инструменты
 
 | Инструмент | Описание |
 |---|---|
-| `wiki_get_page` | Получить страницу по slug (с контентом; динамические таблицы раскрываются в Markdown) |
-| `wiki_get_page_by_id` | Получить страницу по числовому ID |
-| `wiki_get_descendants` | Получить дерево подстраниц по slug |
-| `wiki_get_descendants_by_id` | Получить дерево подстраниц по ID |
-| `wiki_create_page` | Создать новую страницу |
-| `wiki_update_page` | Обновить заголовок и/или контент страницы |
-| `wiki_append_to_page` | Добавить текст в конец страницы |
+| `wiki_get_page` | Страница по slug с содержимым; динамические таблицы раскрываются в Markdown |
+| `wiki_get_page_by_id` | Страница по числовому ID, в том числе в старой ревизии (`revision_id`) |
+| `wiki_get_descendants` | Дерево подстраниц по slug |
+| `wiki_get_descendants_by_id` | Дерево подстраниц по ID |
+| `wiki_search` | Полнотекстовый поиск по страницам и файлам |
+| `wiki_get_revisions` | История правок страницы |
+| `wiki_create_page` | Создать страницу |
+| `wiki_update_page` | Изменить заголовок и/или содержимое страницы |
+| `wiki_append_to_page` | Дописать текст в конец страницы |
 | `wiki_delete_page` | Удалить страницу |
-| `wiki_get_comments` | Получить комментарии страницы |
+| `wiki_get_comments` | Комментарии страницы |
 | `wiki_add_comment` | Добавить комментарий |
-| `wiki_get_attachments` | Получить список вложений |
-| `wiki_get_grid` | Получить динамическую таблицу по UUID (Markdown со столбцом `row_id` или JSON) |
+| `wiki_get_attachments` | Список вложений страницы |
+| `wiki_get_grid` | Динамическая таблица по UUID (Markdown со столбцом `row_id` или JSON) |
 | `wiki_update_grid_cells` | Изменить ячейки динамической таблицы |
 | `wiki_add_grid_rows` | Добавить строки в динамическую таблицу |
-| `wiki_get_current_user` | Информация о текущем пользователе |
+| `wiki_get_current_user` | Текущий пользователь |
 
-Динамические таблицы (`{% wgrid id="UUID" %}`) не входят в текст страницы, поэтому
-`wiki_get_page` и `wiki_get_page_by_id` по умолчанию подставляют под каждый маркер таблицу
-Markdown (`expand_grids=false` отключает). Старые табличные страницы (`page_type=grid`)
-публичный API не отдаёт: на них инструменты возвращают ошибку с подсказкой выгрузить
-таблицу из интерфейса.
+### Динамические таблицы
 
-## Установка через uvx
+Таблицы (`{% wgrid id="UUID" %}`) не входят в текст страницы. `wiki_get_page` и
+`wiki_get_page_by_id` по умолчанию подставляют под каждый маркер таблицу Markdown со столбцом
+`row_id`; `expand_grids=false` возвращает исходный текст. Слаги столбцов для записи отдаёт
+`wiki_get_grid` с `format=json`.
+
+Старые табличные страницы (`page_type=grid`) публичный API не отдаёт: вместо пустой страницы
+инструменты возвращают ошибку с подсказкой выгрузить таблицу из интерфейса (⋯ → Экспорт → CSV).
+
+## Аутентификация
+
+Основной способ: **OAuth-токен Яндекс ID** (`y0_…`). Он действует около года и подходит и для
+Вики, и для Яндекс Трекера. Получить его можно через своё OAuth-приложение с правами
+«Чтение/Запись Wiki» на https://oauth.yandex.ru.
+
+Запасной способ: IAM-токен Яндекс Cloud (`yc iam create-token`). Он действует до 12 часов, и
+его придётся регулярно обновлять в настройках клиента.
+
+| Переменная | Описание |
+|---|---|
+| `WIKI_OAUTH_TOKEN` | OAuth-токен Яндекс ID, схема `OAuth`. Запасные имена: `TRACKER_OAUTH_TOKEN`, `TRACKER_TOKEN` |
+| `WIKI_IAM_TOKEN` | IAM-токен Яндекс Cloud, схема `Bearer`; используется, только если OAuth-токен не задан. Запасное имя: `TRACKER_IAM_TOKEN` |
+| `WIKI_CLOUD_ORG_ID` | ID организации Yandex Cloud, заголовок `X-Cloud-Org-Id`. Запасное имя: `TRACKER_CLOUD_ORG_ID` |
+
+Переменные читаются при каждом запросе. Без токена сервер всё равно запускается, и каждый
+инструмент возвращает ошибку с перечнем нужных переменных.
+
+Имена `TRACKER_TOKEN` и `TRACKER_CLOUD_ORG_ID` совпадают с переменными
+[yandex-tracker-mcp](https://github.com/aikts/yandex-tracker-mcp), поэтому настройки сервера
+Трекера можно скопировать без изменений.
+
+## Установка в Claude Code
+
+```bash
+claude mcp add yandex-wiki --scope user \
+  -e WIKI_OAUTH_TOKEN=<y0_-токен> \
+  -e WIKI_CLOUD_ORG_ID=<id организации> \
+  -- uvx --from git+https://github.com/ssubbotin/yandex-wiki-mcp@master yandex-wiki-mcp-server
+```
+
+Или вручную в `~/.claude.json` (и в любом другом MCP-клиенте):
 
 ```json
 {
   "mcpServers": {
     "yandex-wiki": {
       "command": "uvx",
-      "args": ["--python", "3.12", "yandex-wiki-mcp-server@latest"],
+      "args": [
+        "--from", "git+https://github.com/ssubbotin/yandex-wiki-mcp@master",
+        "yandex-wiki-mcp-server"
+      ],
       "env": {
-        "WIKI_IAM_TOKEN": "your-iam-token",
+        "WIKI_OAUTH_TOKEN": "y0_...",
         "WIKI_CLOUD_ORG_ID": "your-cloud-org-id"
       }
     }
@@ -45,81 +91,38 @@ Markdown (`expand_grids=false` отключает). Старые табличн�
 }
 ```
 
-Если у вас уже настроен Яндекс Трекер MCP — можно переиспользовать те же переменные:
+`uvx` кэширует собранную версию. Чтобы подтянуть свежий `master`, перезапустите сервер с
+`uvx --refresh --from git+…` или выполните `uv cache clean yandex-wiki-mcp-server`.
 
-```json
-{
-  "mcpServers": {
-    "yandex-wiki": {
-      "command": "uvx",
-      "args": ["--python", "3.12", "yandex-wiki-mcp-server@latest"],
-      "env": {
-        "TRACKER_IAM_TOKEN": "your-iam-token",
-        "TRACKER_CLOUD_ORG_ID": "your-cloud-org-id"
-      }
-    }
-  }
-}
-```
+## Если сервер не подключается
 
-Сервер принимает оба набора переменных (`WIKI_*` приоритетнее, `TRACKER_*` как запасной вариант).
-
-## Аутентификация
-
-Используется IAM-токен Яндекс Cloud. Получить токен:
+Запустите команду из настроек вручную и передайте ей запрос initialize: так видна настоящая
+ошибка, которую клиент показывает лишь как «connection closed».
 
 ```bash
-yc iam create-token
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}' \
+  | uvx --from git+https://github.com/ssubbotin/yandex-wiki-mcp@master yandex-wiki-mcp-server
 ```
 
-IAM-токен действует до 12 часов. Для автообновления используйте [yt-refresh](https://github.com/MoshkaBortmanStar/yandex-wiki-mcp) скилл в Claude Code.
-
-### OAuth-токен Яндекс ID
-
-Вместо IAM-токена можно задать OAuth-токен Яндекс ID (`y0__…`). Он действует
-около года, поэтому не требует обновления каждые 12 часов, и совпадает с
-токеном, который используется для Яндекс Трекера. Если переменная OAuth задана,
-она имеет приоритет над IAM:
-
-```bash
-export WIKI_OAUTH_TOKEN=<y0__-токен>       # или TRACKER_OAUTH_TOKEN
-export WIKI_CLOUD_ORG_ID=<id организации>  # или TRACKER_CLOUD_ORG_ID
-```
-
-**Переменные окружения:**
-
-| Переменная | Описание |
-|---|---|
-| `WIKI_OAUTH_TOKEN` или `TRACKER_OAUTH_TOKEN` | OAuth-токен Яндекс ID (схема `OAuth`, приоритетный) |
-| `WIKI_IAM_TOKEN` или `TRACKER_IAM_TOKEN` | IAM-токен Яндекс Cloud (схема `Bearer`, запасной) |
-| `WIKI_CLOUD_ORG_ID` или `TRACKER_CLOUD_ORG_ID` | ID организации Yandex Cloud (`X-Cloud-Org-Id`) |
-
-Нужен один из двух токенов. Если не задан ни один, сервер завершается с понятной ошибкой.
-
-## Добавление в Claude Code
-
-```bash
-claude mcp add yandex-wiki --scope user \
-  -- uvx --python 3.12 yandex-wiki-mcp-server@latest
-```
-
-Затем добавьте env-переменные в `~/.claude.json` в секцию `mcpServers.yandex-wiki.env`.
+Сервер написан под `mcp` 1.x (`mcp>=1.0.0,<2`). В `mcp` 2.x изменился интерфейс низкоуровневого
+сервера, и без этого ограничения он падает при запуске с ошибкой
+`'Server' object has no attribute 'list_tools'`.
 
 ## Локальная разработка
 
 ```bash
-git clone https://github.com/MoshkaBortmanStar/yandex-wiki-mcp.git
+git clone https://github.com/ssubbotin/yandex-wiki-mcp.git
 cd yandex-wiki-mcp
-uv venv && uv pip install -e .
+uv sync
 
-export TRACKER_IAM_TOKEN=$(yc iam create-token)
-export TRACKER_CLOUD_ORG_ID=your-org-id
-
-python -m yandex_wiki_mcp
+export WIKI_OAUTH_TOKEN=<y0_-токен>
+export WIKI_CLOUD_ORG_ID=<id организации>
+uv run python -m yandex_wiki_mcp        # сервер на stdio
+uv run python -m unittest -v            # тесты (без сети, запросы подменяются)
 ```
 
 ## Требования
 
-- Python >= 3.10
-- `mcp >= 1.0.0`
-- `httpx >= 0.27.0`
+- Python 3.10 или новее
+- `mcp>=1.0.0,<2`
+- `httpx>=0.27.0`
